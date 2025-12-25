@@ -82,35 +82,37 @@ rm -rf /tmp/luci-*
 
 ### 1.1 核心组件对比表
 
-| LuCI 组件 | Spring Boot + Vue 对应组件 | 功能说明 |
-|-----------|---------------------------|----------|
-| **Controller** (`controller/*.lua`) | Spring `@RestController` | 路由定义、请求处理、API 接口 |
-| **CBI Model** (`model/cbi/*.lua`) | Vue Form + Spring Service + JPA Entity | 配置表单自动生成（类似于声明式 CRUD） |
-| **View Template** (`view/*.htm`) | Vue SFC (Single File Component) | 自定义 HTML 页面，支持 AJAX 动态更新 |
-| **UCI** (`/etc/config/*`) | MySQL/PostgreSQL + application.yml | 持久化配置存储（键值对形式） |
-| **ubus** | Spring Cloud 的 Feign/gRPC/Kafka | 进程间通信总线（系统服务调用） |
-| **Lua** | Java (业务逻辑层) | 服务端脚本语言 |
-| **LuCI HTTP** | Spring MVC 的 HttpServletRequest/Response | HTTP 请求响应处理 |
-| **nixio** | Java NIO / Apache Commons IO | 底层 I/O 和网络操作 |
+| LuCI 组件                           | Spring Boot + Vue 对应组件                | 功能说明                              |
+| ----------------------------------- | ----------------------------------------- | ------------------------------------- |
+| **Controller** (`controller/*.lua`) | Spring `@RestController`                  | 路由定义、请求处理、API 接口          |
+| **CBI Model** (`model/cbi/*.lua`)   | Vue Form + Spring Service + JPA Entity    | 配置表单自动生成（类似于声明式 CRUD） |
+| **View Template** (`view/*.htm`)    | Vue SFC (Single File Component)           | 自定义 HTML 页面，支持 AJAX 动态更新  |
+| **UCI** (`/etc/config/*`)           | MySQL/PostgreSQL + application.yml        | 持久化配置存储（键值对形式）          |
+| **ubus**                            | Spring Cloud 的 Feign/gRPC/Kafka          | 进程间通信总线（系统服务调用）        |
+| **Lua**                             | Java (业务逻辑层)                         | 服务端脚本语言                        |
+| **LuCI HTTP**                       | Spring MVC 的 HttpServletRequest/Response | HTTP 请求响应处理                     |
+| **nixio**                           | Java NIO / Apache Commons IO              | 底层 I/O 和网络操作                   |
 
 ### 1.2 请求处理流程对比
 
 **Spring Boot + Vue 架构**：
+
 > Browser (Vue) → Nginx → Controller → Service → Repository → DB
 
 **LuCI 架构**：
+
 > Browser → uhttpd → Controller.lua → CBI/Logic → UCI → ConfigFile
 
 ### 1.3 Ubus 的角色定位
 
 **类比理解**：Ubus 相当于 Spring Cloud 生态中的 **消息总线 + RPC 调用** 的结合体。
 
-| Ubus 特性 | 对应的 Java 技术 |
-|-----------|-----------------|
-| 服务注册与发现 | Eureka/Nacos |
-| 同步方法调用 | Feign/gRPC |
-| 事件发布/订阅 | Spring Events / Kafka |
-| JSON 数据交换 | Jackson/Gson |
+| Ubus 特性      | 对应的 Java 技术      |
+| -------------- | --------------------- |
+| 服务注册与发现 | Eureka/Nacos          |
+| 同步方法调用   | Feign/gRPC            |
+| 事件发布/订阅  | Spring Events / Kafka |
+| JSON 数据交换  | Jackson/Gson          |
 
 ```bash
 # 查看所有 Ubus 服务（类似于查看注册中心的服务列表）
@@ -150,12 +152,12 @@ config interface 'wan'
 
 #### UCI 操作对比
 
-| 操作 | UCI 命令/API | Java + Spring 对应操作 |
-|------|-------------|----------------------|
-| 读取配置 | `uci get network.lan.ipaddr` | `configService.get("network.lan.ipaddr")` |
-| 写入配置 | `uci set network.lan.ipaddr='192.168.2.1'` | `entity.setIpaddr("192.168.2.1")` |
-| 提交更改 | `uci commit network` | `repository.save(entity)` |
-| 应用更改 | `/etc/init.d/network reload` | 事务提交 + 缓存刷新 |
+| 操作     | UCI 命令/API                               | Java + Spring 对应操作                    |
+| -------- | ------------------------------------------ | ----------------------------------------- |
+| 读取配置 | `uci get network.lan.ipaddr`               | `configService.get("network.lan.ipaddr")` |
+| 写入配置 | `uci set network.lan.ipaddr='192.168.2.1'` | `entity.setIpaddr("192.168.2.1")`         |
+| 提交更改 | `uci commit network`                       | `repository.save(entity)`                 |
+| 应用更改 | `/etc/init.d/network reload`               | 事务提交 + 缓存刷新                       |
 
 #### Lua 中操作 UCI
 
@@ -401,85 +403,261 @@ sequenceDiagram
 
 ## 4. 源码阅读指南
 
-### 4.1 核心目录结构
+### 4.1 LuCI 源码结构（编译前）
+
+LuCI 源码位于 OpenWrt 的 feeds 中，通过 `./scripts/feeds update luci` 获取。
+
+**源码仓库位置**：
 
 ```bash
-/usr/lib/lua/luci/          # LuCI 核心代码目录
-├── controller/             # ⭐ 控制器层（必读）
-│   ├── admin/              #    后台管理相关
-│   │   ├── index.lua       #    首页/概览
-│   │   ├── system.lua      #    系统管理
-│   │   ├── network.lua     #    网络配置
-│   │   └── status.lua      #    状态查看
-│   └── api/                #    API 接口
-├── model/                  
-│   └── cbi/                # ⭐ CBI 模型层（必读）
-│       └── admin/
-│           ├── system/
-│           └── network/
-├── view/                   # ⭐ 视图模板层
-│   ├── header.htm          #    页面头部
-│   ├── footer.htm          #    页面尾部
-│   └── admin/
-│       └── status/         #    状态页面模板
-├── dispatcher.lua          # ⭐ 路由分发器（核心）
-├── http.lua                #    HTTP 工具类
-├── i18n.lua                #    国际化
-└── sys.lua                 #    系统操作工具
-
-/etc/config/                # UCI 配置文件目录
-├── network                 #    网络配置
-├── wireless                #    无线配置
-├── firewall                #    防火墙规则
-├── dhcp                    #    DHCP 配置
-└── system                  #    系统配置
+# OpenWrt 构建目录下
+feeds/luci/                     # LuCI 主仓库
+├── applications/               # ⭐ 所有 luci-app-* 应用
+│   ├── luci-app-firewall/      #    防火墙管理
+│   ├── luci-app-opkg/          #    软件包管理
+│   ├── luci-app-ddns/          #    动态DNS
+│   └── luci-app-example/       #    示例应用（学习参考）
+├── modules/                    # LuCI 核心模块
+│   ├── luci-base/              # ⭐ 核心框架（必读）
+│   ├── luci-mod-admin-full/    #    完整管理界面
+│   ├── luci-mod-network/       #    网络模块
+│   └── luci-mod-system/        #    系统模块
+├── libs/                       # 依赖库
+│   ├── luci-lib-base/          #    基础库
+│   ├── luci-lib-ip/            #    IP处理库
+│   └── luci-lib-jsonc/         #    JSON库
+├── themes/                     # 主题
+│   ├── luci-theme-bootstrap/   #    默认主题
+│   └── luci-theme-openwrt/     #    经典主题
+├── protocols/                  # 网络协议支持
+├── collections/                # 软件包集合
+└── contrib/                    # 贡献工具
 ```
 
-### 4.2 如何找到特定功能的代码
-
-**场景**：想找到「网络 → 接口」页面的代码
+**单个 luci-app 源码结构**（以 luci-app-firewall 为例）：
 
 ```bash
-# Step 1: 从 URL 入手
+feeds/luci/applications/luci-app-firewall/
+├── Makefile                    # ⭐ 编译配置（定义安装路径）
+├── htdocs/                     # 静态资源（JS/CSS）
+│   └── luci-static/
+│       └── resources/
+│           └── view/
+│               └── firewall/   # JS 视图文件
+├── luasrc/                     # ⭐ Lua 源码（传统模式）
+│   ├── controller/
+│   │   └── firewall.lua        # 控制器
+│   ├── model/
+│   │   └── cbi/
+│   │       └── firewall/       # CBI 模型
+│   └── view/
+│       └── firewall/           # HTM 模板
+├── root/                       # ⭐ 直接复制到根文件系统的文件
+│   └── etc/
+│       ├── config/
+│       │   └── firewall        # UCI 默认配置
+│       ├── init.d/
+│       │   └── firewall        # 启动脚本
+│       └── uci-defaults/
+│           └── firewall        # 首次安装执行的脚本
+└── po/                         # 多语言翻译
+    ├── templates/
+    │   └── firewall.pot        # 翻译模板
+    ├── zh_Hans/                 # 简体中文（注意不是 zh_CN）
+    │   └── firewall.po
+    └── en/
+        └── firewall.po
+```
+
+### 4.2 源码目录与编译后目录的映射关系
+
+理解这个映射关系是开发的关键：
+
+| 源码目录 (feeds/luci/...) | 编译后目录 (设备上)             | 说明                    |
+| ------------------------- | ------------------------------- | ----------------------- |
+| `luasrc/controller/`      | `/usr/lib/lua/luci/controller/` | 控制器                  |
+| `luasrc/model/cbi/`       | `/usr/lib/lua/luci/model/cbi/`  | CBI 模型                |
+| `luasrc/view/`            | `/usr/lib/lua/luci/view/`       | 视图模板                |
+| `htdocs/luci-static/`     | `/www/luci-static/`             | 静态资源                |
+| `root/etc/config/`        | `/etc/config/`                  | UCI 配置                |
+| `root/etc/init.d/`        | `/etc/init.d/`                  | 启动脚本                |
+| `po/zh_Hans/`             | `/usr/lib/lua/luci/i18n/`       | 翻译文件（编译为 .lmo） |
+
+**Makefile 中的路径定义**：
+
+```makefile
+# feeds/luci/applications/luci-app-xxx/Makefile
+
+include $(TOPDIR)/rules.mk
+
+# 应用名称
+LUCI_TITLE:=LuCI Support for XXX
+LUCI_DEPENDS:=+luci-base +some-package
+
+# 关键：指定源码目录映射
+PKG_NAME:=luci-app-xxx
+
+include $(TOPDIR)/feeds/luci/luci.mk
+
+# luci.mk 会自动处理以下映射：
+# luasrc/  →  /usr/lib/lua/luci/
+# htdocs/  →  /www/
+# root/    →  /  (直接复制)
+```
+
+### 4.3 luci-base 核心源码结构
+
+`luci-base` 是整个 LuCI 的核心，位于 `feeds/luci/modules/luci-base/`：
+
+```bash
+feeds/luci/modules/luci-base/
+├── luasrc/                     # Lua 核心库
+│   └── luci/
+│       ├── dispatcher.lua      # ⭐ 路由分发（入口）
+│       ├── http.lua            # HTTP 请求处理
+│       ├── util.lua            # 工具函数
+│       ├── sys.lua             # 系统操作
+│       ├── ip.lua              # IP 地址处理
+│       ├── model/
+│       │   ├── uci.lua         # ⭐ UCI 操作封装
+│       │   └── network.lua     # 网络模型
+│       ├── view/               # 核心视图
+│       │   ├── header.htm      # 页面头
+│       │   ├── footer.htm      # 页面尾
+│       │   └── cbi/            # CBI 组件模板
+│       └── cbi.lua             # ⭐ CBI 框架核心
+├── htdocs/                     # 前端资源
+│   └── luci-static/
+│       └── resources/
+│           ├── cbi.js          # CBI JavaScript
+│           ├── luci.js         # LuCI 核心 JS
+│           └── xhr.js          # AJAX 封装
+└── root/
+    └── www/
+        └── cgi-bin/
+            └── luci            # CGI 入口脚本
+```
+
+### 4.4 编译后的目录结构（设备上）
+
+当 luci-app 编译安装到 OpenWrt 设备后：
+
+```bash
+/usr/lib/lua/luci/              # LuCI 核心代码目录
+├── controller/                 # ⭐ 控制器层
+│   ├── admin/                  #    后台管理
+│   │   ├── index.lua           
+│   │   ├── system.lua          
+│   │   ├── network.lua         
+│   │   └── status.lua          
+│   ├── firewall.lua            #    来自 luci-app-firewall
+│   └── api/                    #    API 接口
+├── model/                  
+│   ├── cbi/                    # ⭐ CBI 模型层
+│   │   └── admin/
+│   │       ├── system/
+│   │       └── network/
+│   ├── uci.lua                 #    UCI 操作
+│   └── network.lua             #    网络模型
+├── view/                       # ⭐ 视图模板层
+│   ├── header.htm              
+│   ├── footer.htm              
+│   ├── cbi/                    #    CBI 组件
+│   └── admin/
+│       └── status/             
+├── dispatcher.lua              # 路由分发器
+├── http.lua                    # HTTP 工具
+├── cbi.lua                     # CBI 框架
+├── sys.lua                     # 系统操作
+└── i18n/                       # 翻译文件 (.lmo)
+
+/www/                           # Web 根目录
+├── cgi-bin/
+│   └── luci                    # CGI 入口
+├── luci-static/                # 静态资源
+│   └── resources/
+│       ├── cbi.js
+│       └── view/               # JS 视图
+└── index.html
+
+/etc/config/                    # UCI 配置文件
+├── network                 
+├── wireless                
+├── firewall                
+├── dhcp                    
+└── system                  
+```
+
+### 4.5 如何找到特定功能的代码
+
+**方法一：从 URL 反向查找（设备上）**
+
+```bash
 # 浏览器地址栏：/cgi-bin/luci/admin/network/network
 # 提取路径：admin/network/network
 
-# Step 2: 查找 Controller
+# 在设备上查找 Controller
 grep -r "admin.*network.*network" /usr/lib/lua/luci/controller/
-# → 定位到 /usr/lib/lua/luci/controller/admin/network.lua
+# → /usr/lib/lua/luci/controller/admin/network.lua
 
-# Step 3: 查看 Controller 中的 entry 定义
-cat /usr/lib/lua/luci/controller/admin/network.lua | grep "entry"
-# → entry({"admin", "network", "network"}, cbi("admin/network/network"), ...)
-
-# Step 4: 找到 CBI Model
-# 路径转换：cbi("admin/network/network") 
+# 查看 entry 定义找到 CBI 路径
+# entry({"admin", "network", "network"}, cbi("admin/network/network"), ...)
 # → /usr/lib/lua/luci/model/cbi/admin/network/network.lua
 ```
 
-**快速查找技巧**：
+**方法二：从源码查找（开发环境）**
 
 ```bash
-# 按菜单名称搜索（多语言翻译）
-grep -r "Interfaces" /usr/lib/lua/luci/
-
-# 按 UCI 配置名搜索
-grep -r '"network"' /usr/lib/lua/luci/controller/
+# 在 OpenWrt 构建目录下
+cd feeds/luci
 
 # 按功能关键字搜索
-grep -rn "firewall" /usr/lib/lua/luci/model/cbi/
+grep -rn "network" applications/*/luasrc/controller/
+grep -rn "Interfaces" modules/*/po/templates/*.pot
+
+# 找到后查看完整路径
+find . -name "network.lua" -path "*/controller/*"
 ```
 
-### 4.3 核心文件速查表
+**方法三：通过 Git 查找**
 
-| 你想了解的内容 | 必读文件 |
-|---------------|---------|
-| 路由如何定义 | `controller/*.lua` → `index()` 函数 |
-| 表单如何生成 | `model/cbi/*.lua` → `Map`, `Section`, `Option` |
-| 页面如何渲染 | `view/*.htm` → Lua 模板语法 |
-| UCI 如何操作 | `luci/model/uci.lua` |
-| HTTP 请求处理 | `luci/http.lua` |
-| 路由分发机制 | `luci/dispatcher.lua` |
+```bash
+# 克隆 LuCI 仓库
+git clone https://github.com/openwrt/luci.git
+cd luci
+
+# 搜索特定功能
+git grep "firewall" -- "*.lua"
+git log --oneline --all -- applications/luci-app-firewall/
+```
+
+### 4.6 核心文件速查表
+
+| 你想了解的内容 | 源码位置                                                     | 编译后位置                                  |
+| -------------- | ------------------------------------------------------------ | ------------------------------------------- |
+| 路由分发机制   | `modules/luci-base/luasrc/luci/dispatcher.lua`               | `/usr/lib/lua/luci/dispatcher.lua`          |
+| CBI 框架核心   | `modules/luci-base/luasrc/luci/cbi.lua`                      | `/usr/lib/lua/luci/cbi.lua`                 |
+| UCI 操作封装   | `modules/luci-base/luasrc/luci/model/uci.lua`                | `/usr/lib/lua/luci/model/uci.lua`           |
+| HTTP 请求处理  | `modules/luci-base/luasrc/luci/http.lua`                     | `/usr/lib/lua/luci/http.lua`                |
+| 防火墙控制器   | `applications/luci-app-firewall/luasrc/controller/firewall.lua` | `/usr/lib/lua/luci/controller/firewall.lua` |
+| CBI 组件模板   | `modules/luci-base/luasrc/luci/view/cbi/`                    | `/usr/lib/lua/luci/view/cbi/`               |
+| 前端 JS 库     | `modules/luci-base/htdocs/luci-static/resources/`            | `/www/luci-static/resources/`               |
+
+### 4.7 推荐的源码阅读顺序
+
+```
+1. dispatcher.lua     → 理解请求如何被路由
+       ↓
+2. 任意 controller    → 理解 entry() 如何定义路由和菜单
+       ↓
+3. cbi.lua            → 理解 CBI 框架如何工作
+       ↓
+4. 任意 CBI model     → 理解如何定义配置表单
+       ↓
+5. model/uci.lua      → 理解 UCI 操作 API
+       ↓
+6. view/cbi/*.htm     → 理解 CBI 组件如何渲染
+```
 
 ---
 
@@ -676,15 +854,15 @@ return m
 
 **Step 3: CBI Option 类型速查**
 
-| Option 类型 | 对应的表单元素 | 典型用途 |
-|------------|--------------|---------|
-| `Value` | `<input type="text">` | 文本输入 |
-| `Flag` | `<input type="checkbox">` | 开关/布尔值 |
-| `ListValue` | `<select>` | 单选下拉框 |
-| `MultiValue` | `<select multiple>` | 多选 |
-| `TextValue` | `<textarea>` | 多行文本 |
-| `DynamicList` | 动态添加的输入列表 | 如 DNS 服务器列表 |
-| `Button` | `<button>` | 执行操作 |
+| Option 类型   | 对应的表单元素            | 典型用途          |
+| ------------- | ------------------------- | ----------------- |
+| `Value`       | `<input type="text">`     | 文本输入          |
+| `Flag`        | `<input type="checkbox">` | 开关/布尔值       |
+| `ListValue`   | `<select>`                | 单选下拉框        |
+| `MultiValue`  | `<select multiple>`       | 多选              |
+| `TextValue`   | `<textarea>`              | 多行文本          |
+| `DynamicList` | 动态添加的输入列表        | 如 DNS 服务器列表 |
+| `Button`      | `<button>`                | 执行操作          |
 
 **Step 4: 数据类型验证（datatype）**
 
@@ -1002,14 +1180,14 @@ luci-reload
 
 ### 6.4 常见错误排查
 
-| 错误现象 | 可能原因 | 解决方案 |
-|---------|---------|---------|
-| 500 Internal Server Error | Lua 语法错误 | `lua -e "require('...')"` 检查语法 |
-| 菜单不显示 | Controller 未正确加载 | 检查 module 定义，清理缓存 |
-| CBI 页面空白 | Map 文件路径错误 | 检查 `cbi("path")` 与文件位置 |
-| 保存后配置未生效 | 未 commit 或未 reload | 检查 `uci:commit()` |
-| AJAX 请求 404 | entry 定义缺失 `.leaf = true` | 添加 `.leaf = true` |
-| 中文乱码 | 翻译文件编码问题 | 确保 po 文件为 UTF-8 |
+| 错误现象                  | 可能原因                      | 解决方案                           |
+| ------------------------- | ----------------------------- | ---------------------------------- |
+| 500 Internal Server Error | Lua 语法错误                  | `lua -e "require('...')"` 检查语法 |
+| 菜单不显示                | Controller 未正确加载         | 检查 module 定义，清理缓存         |
+| CBI 页面空白              | Map 文件路径错误              | 检查 `cbi("path")` 与文件位置      |
+| 保存后配置未生效          | 未 commit 或未 reload         | 检查 `uci:commit()`                |
+| AJAX 请求 404             | entry 定义缺失 `.leaf = true` | 添加 `.leaf = true`                |
+| 中文乱码                  | 翻译文件编码问题              | 确保 po 文件为 UTF-8               |
 
 ---
 
@@ -1351,13 +1529,13 @@ flowchart TB
 
 **优势对比**：
 
-| 维度 | 重 Lua 模式 | 轻 Lua + 重 Ubus 模式 |
-|------|------------|----------------------|
-| 性能 | 较差（解释执行） | 高（C 原生执行） |
-| 并发 | 单线程阻塞 | 多进程/多线程 |
-| 复用 | 仅限 LuCI | CLI、其他程序均可调用 |
-| 维护 | 混合代码难维护 | 职责清晰 |
-| 安全 | 权限控制较弱 | Ubus ACL 统一管理 |
+| 维度 | 重 Lua 模式      | 轻 Lua + 重 Ubus 模式 |
+| ---- | ---------------- | --------------------- |
+| 性能 | 较差（解释执行） | 高（C 原生执行）      |
+| 并发 | 单线程阻塞       | 多进程/多线程         |
+| 复用 | 仅限 LuCI        | CLI、其他程序均可调用 |
+| 维护 | 混合代码难维护   | 职责清晰              |
+| 安全 | 权限控制较弱     | Ubus ACL 统一管理     |
 
 ### 8.3 Ubus 完整交互流程
 
@@ -1492,12 +1670,12 @@ end
 
 ### 9.1 LuCI ACL 与 Spring Security 对比
 
-| 概念 | Spring Security | LuCI ACL |
-|------|----------------|----------|
-| 角色定义 | `@PreAuthorize("hasRole('ADMIN')")` | ACL JSON 配置 |
-| 权限检查 | Filter Chain | `luci.dispatcher` 检查 |
-| Session 管理 | Spring Session | `/tmp/luci-sessions/` |
-| 认证方式 | Form Login / JWT | `luci.sauth` 模块 |
+| 概念         | Spring Security                     | LuCI ACL               |
+| ------------ | ----------------------------------- | ---------------------- |
+| 角色定义     | `@PreAuthorize("hasRole('ADMIN')")` | ACL JSON 配置          |
+| 权限检查     | Filter Chain                        | `luci.dispatcher` 检查 |
+| Session 管理 | Spring Session                      | `/tmp/luci-sessions/`  |
+| 认证方式     | Form Login / JWT                    | `luci.sauth` 模块      |
 
 ### 9.2 ACL 配置结构
 
@@ -1835,12 +2013,12 @@ end
 
 OpenWrt 24.10 引入了重要变化，开发者需要了解：
 
-| 特性 | 旧版本 (21.x/22.x) | 新版本 (24.10) |
-|------|-------------------|----------------|
-| 默认脚本语言 | Lua 5.1 | **ucode** (部分模块) |
-| 前端框架 | LuCI Classic | LuCI JS (client-side rendering) |
-| API 风格 | Server-side render | **JSON-RPC + 前端渲染** |
-| 推荐开发方式 | CBI Model | **luci-js-* 模块** |
+| 特性         | 旧版本 (21.x/22.x) | 新版本 (24.10)                  |
+| ------------ | ------------------ | ------------------------------- |
+| 默认脚本语言 | Lua 5.1            | **ucode** (部分模块)            |
+| 前端框架     | LuCI Classic       | LuCI JS (client-side rendering) |
+| API 风格     | Server-side render | **JSON-RPC + 前端渲染**         |
+| 推荐开发方式 | CBI Model          | **luci-js-* 模块**              |
 
 ### 10.2 ucode 简介
 
@@ -1861,13 +2039,13 @@ config.foreach("network", "interface", function(s) {
 
 **Lua vs ucode 对比**：
 
-| 特性 | Lua | ucode |
-|------|-----|-------|
-| 语法风格 | 独特语法 | 类 JavaScript |
-| 索引起点 | 从 1 开始 | 从 0 开始 |
-| 注释 | `-- 单行` `--[[ 多行 ]]` | `// 单行` `/* 多行 */` |
-| 字符串拼接 | `..` | `+` |
-| 包体积 | ~200KB | ~60KB |
+| 特性       | Lua                      | ucode                  |
+| ---------- | ------------------------ | ---------------------- |
+| 语法风格   | 独特语法                 | 类 JavaScript          |
+| 索引起点   | 从 1 开始                | 从 0 开始              |
+| 注释       | `-- 单行` `--[[ 多行 ]]` | `// 单行` `/* 多行 */` |
+| 字符串拼接 | `..`                     | `+`                    |
+| 包体积     | ~200KB                   | ~60KB                  |
 
 ### 10.3 新版 LuCI JS 模式
 
@@ -1905,12 +2083,12 @@ return view.extend({
 
 对于你们团队的开发：
 
-| 场景 | 推荐方案 |
-|------|---------|
-| 维护现有 Lua 项目 | 继续使用 Lua + CBI |
-| 全新项目且追求性能 | 考虑 ucode + LuCI JS |
-| 快速原型开发 | Lua + CBI（生态更成熟） |
-| 需要复杂 UI 交互 | LuCI JS + Vue/React |
+| 场景               | 推荐方案                |
+| ------------------ | ----------------------- |
+| 维护现有 Lua 项目  | 继续使用 Lua + CBI      |
+| 全新项目且追求性能 | 考虑 ucode + LuCI JS    |
+| 快速原型开发       | Lua + CBI（生态更成熟） |
+| 需要复杂 UI 交互   | LuCI JS + Vue/React     |
 
 **本指导书主要基于 Lua + CBI 模式**，这是目前最成熟稳定的开发方式。
 
@@ -1929,6 +2107,7 @@ rm -rf /tmp/luci-*
 ### Q2: 出现 500 Internal Server Error？
 
 **排查步骤**：
+
 ```bash
 # 1. 查看错误日志
 logread | tail -50
@@ -1944,6 +2123,7 @@ ls -la /usr/lib/lua/luci/controller/yourmodule.lua
 ### Q3: 菜单不显示？
 
 **常见原因**：
+
 1. Controller 的 `module()` 路径与文件路径不匹配
 2. `index()` 函数没有被定义
 3. `entry()` 的路径数组写错了
@@ -1958,6 +2138,7 @@ module("luci.controller.admin.myapp", package.seeall)  -- 路径对应！
 ### Q4: CBI 表单保存后配置没生效？
 
 **检查清单**：
+
 ```lua
 -- 1. 确保 UCI 配置文件存在
 -- /etc/config/yourconfig
@@ -2055,35 +2236,101 @@ end
 
 ### Q10: 性能优化建议？
 
-| 问题 | 优化方案 |
-|------|---------|
-| 页面加载慢 | 减少 CBI Option 数量，分页显示 |
-| API 响应慢 | 使用 ubus 替代 os.execute |
-| UCI 操作频繁 | 批量操作后一次 commit |
-| Lua 执行慢 | 重逻辑放到 C/ubus 服务 |
+| 问题         | 优化方案                       |
+| ------------ | ------------------------------ |
+| 页面加载慢   | 减少 CBI Option 数量，分页显示 |
+| API 响应慢   | 使用 ubus 替代 os.execute      |
+| UCI 操作频繁 | 批量操作后一次 commit          |
+| Lua 执行慢   | 重逻辑放到 C/ubus 服务         |
 
 ---
 
 ## 附录 B: 开发环境搭建
 
-### C.1 推荐开发环境
+### B.1 获取 LuCI 源码
 
-| 工具 | 推荐 | 用途 |
-|------|-----|------|
-| IDE | VS Code + SSH Remote | 远程编辑代码 |
-| SSH 客户端 | Termius / iTerm2 | 命令行操作 |
-| 文件同步 | rsync + fswatch | 自动同步代码 |
-| API 测试 | Postman / curl | 测试接口 |
-| 版本控制 | Git | 代码管理 |
+**方法一：克隆 LuCI 独立仓库（推荐用于学习）**
 
-### C.2 VS Code 配置
+```bash
+# 克隆 LuCI 仓库
+git clone https://github.com/openwrt/luci.git
+cd luci
+
+# 查看分支（选择对应 OpenWrt 版本）
+git branch -a
+git checkout openwrt-24.10  # 切换到 24.10 分支
+```
+
+**方法二：通过 OpenWrt SDK（推荐用于开发）**
+
+```bash
+# 1. 下载 OpenWrt SDK（以 x86_64 为例）
+wget https://downloads.openwrt.org/releases/24.10.0/targets/x86/64/openwrt-sdk-24.10.0-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.xz
+tar -xf openwrt-sdk-*.tar.xz
+cd openwrt-sdk-*
+
+# 2. 更新 feeds（获取 LuCI 源码）
+./scripts/feeds update -a
+./scripts/feeds install -a
+
+# 3. LuCI 源码位于
+ls feeds/luci/
+
+# 4. 配置编译环境
+make menuconfig
+# 选择 LuCI → Applications → 你需要的应用
+```
+
+**方法三：在完整 OpenWrt 构建环境中**
+
+```bash
+# 克隆 OpenWrt 源码
+git clone https://github.com/openwrt/openwrt.git
+cd openwrt
+git checkout v24.10.0
+
+# 更新 feeds
+./scripts/feeds update -a
+./scripts/feeds install -a
+
+# LuCI 源码位于
+ls feeds/luci/applications/
+ls feeds/luci/modules/
+```
+
+### B.2 两种开发模式对比
+
+| 模式             | 适用场景         | 优点           | 缺点                 |
+| ---------------- | ---------------- | -------------- | -------------------- |
+| **直接设备开发** | 快速原型、小改动 | 即改即测       | 重启丢失、难版本控制 |
+| **SDK 交叉编译** | 正式项目、需打包 | 可复现、易分发 | 编译耗时             |
+
+**推荐工作流**：
+
+1. 在 SDK 中创建 luci-app 源码结构
+2. 通过 rsync 同步到设备快速测试
+3. 测试通过后再编译 ipk 包
+
+### B.3 推荐开发工具
+
+| 工具       | 推荐                 | 用途         |
+| ---------- | -------------------- | ------------ |
+| IDE        | VS Code + SSH Remote | 远程编辑代码 |
+| SSH 客户端 | Termius / iTerm2     | 命令行操作   |
+| 文件同步   | rsync + fswatch      | 自动同步代码 |
+| API 测试   | Postman / curl       | 测试接口     |
+| 版本控制   | Git                  | 代码管理     |
+
+### B.4 VS Code 配置
 
 **必装插件**：
+
 - Remote - SSH
 - Lua (sumneko)
 - OpenWrt LuCI Snippets（如有）
 
 **settings.json**：
+
 ```json
 {
     "files.associations": {
@@ -2097,83 +2344,139 @@ end
 }
 ```
 
-### C.3 自动同步脚本
+### B.5 源码项目结构模板
+
+在 `feeds/luci/applications/` 下创建你的应用：
+
+```bash
+feeds/luci/applications/luci-app-myapp/
+├── Makefile                    # ⭐ 编译配置
+├── luasrc/                     # ⭐ Lua 源码（注意是 luasrc 不是 src）
+│   ├── controller/
+│   │   └── myapp.lua           # 控制器
+│   ├── model/
+│   │   └── cbi/
+│   │       └── myapp/
+│   │           └── config.lua  # CBI 模型
+│   └── view/
+│       └── myapp/
+│           ├── status.htm      # 状态页面
+│           └── overview.htm    # 概览页面
+├── htdocs/                     # 静态资源（可选）
+│   └── luci-static/
+│       └── resources/
+│           └── view/
+│               └── myapp/
+│                   └── config.js   # JS 视图（新版 LuCI）
+├── root/                       # ⭐ 直接复制到根文件系统
+│   └── etc/
+│       ├── config/
+│       │   └── myapp           # UCI 默认配置
+│       ├── init.d/
+│       │   └── myapp           # 服务启动脚本
+│       └── uci-defaults/
+│           └── 99-myapp        # 首次安装执行的脚本
+└── po/                         # 多语言翻译
+    ├── templates/
+    │   └── myapp.pot           # 翻译模板
+    └── zh_Hans/                # ⚠️ 注意：是 zh_Hans 不是 zh_CN
+        └── myapp.po            # 中文翻译
+```
+
+### B.6 Makefile 模板
+
+```makefile
+# feeds/luci/applications/luci-app-myapp/Makefile
+
+include $(TOPDIR)/rules.mk
+
+LUCI_TITLE:=LuCI Support for My Application
+LUCI_DESCRIPTION:=Web interface for my custom application
+LUCI_DEPENDS:=+luci-base +luci-compat
+
+# 如果依赖其他包
+# LUCI_DEPENDS:=+luci-base +myapp-backend
+
+PKG_LICENSE:=Apache-2.0
+PKG_MAINTAINER:=Your Name <your@email.com>
+
+include $(TOPDIR)/feeds/luci/luci.mk
+
+# 这行很重要，调用 LuCI 的编译宏
+# luci.mk 会自动处理 luasrc/ htdocs/ root/ po/ 的安装
+```
+
+### B.7 自动同步脚本
 
 ```bash
 #!/bin/bash
-# sync-luci.sh - 保存到开发机
+# sync-luci.sh - 用于快速开发测试
 
 REMOTE_HOST="root@192.168.1.1"
-LOCAL_DIR="./luci-app-myapp"
-REMOTE_DIR="/usr/lib/lua/luci"
+LOCAL_DIR="./feeds/luci/applications/luci-app-myapp"
+REMOTE_BASE="/usr/lib/lua/luci"
 
-# 同步并清理缓存
 sync_and_reload() {
-    rsync -avz --delete \
-        $LOCAL_DIR/controller/ $REMOTE_HOST:$REMOTE_DIR/controller/
-    rsync -avz --delete \
-        $LOCAL_DIR/model/ $REMOTE_HOST:$REMOTE_DIR/model/
-    rsync -avz --delete \
-        $LOCAL_DIR/view/ $REMOTE_HOST:$REMOTE_DIR/view/
+    echo "Syncing to $REMOTE_HOST..."
     
+    # 同步 Lua 源码
+    rsync -avz --delete \
+        $LOCAL_DIR/luasrc/controller/ $REMOTE_HOST:$REMOTE_BASE/controller/
+    rsync -avz --delete \
+        $LOCAL_DIR/luasrc/model/ $REMOTE_HOST:$REMOTE_BASE/model/
+    rsync -avz --delete \
+        $LOCAL_DIR/luasrc/view/ $REMOTE_HOST:$REMOTE_BASE/view/
+    
+    # 同步 UCI 配置（可选）
+    if [ -d "$LOCAL_DIR/root/etc/config" ]; then
+        rsync -avz $LOCAL_DIR/root/etc/config/ $REMOTE_HOST:/etc/config/
+    fi
+    
+    # 清理缓存并重启
     ssh $REMOTE_HOST 'rm -rf /tmp/luci-* && /etc/init.d/uhttpd restart'
+    
     echo "✅ Synced at $(date '+%H:%M:%S')"
 }
 
-# macOS: 使用 fswatch 监听变化
+# macOS: fswatch 监听
+# Linux: inotifywait 监听
 if command -v fswatch &> /dev/null; then
     echo "👀 Watching $LOCAL_DIR for changes..."
-    fswatch -o $LOCAL_DIR | while read; do
+    fswatch -o $LOCAL_DIR/luasrc | while read; do
+        sync_and_reload
+    done
+elif command -v inotifywait &> /dev/null; then
+    echo "👀 Watching $LOCAL_DIR for changes..."
+    while inotifywait -r -e modify,create,delete $LOCAL_DIR/luasrc; do
         sync_and_reload
     done
 else
-    # 单次同步
     sync_and_reload
 fi
 ```
 
-### C.4 本地项目结构模板
+### B.8 编译和安装
 
-```
-luci-app-myapp/
-├── Makefile                    # OpenWrt 编译配置
-├── controller/
-│   └── myapp.lua              # 路由和 API
-├── model/
-│   └── cbi/
-│       └── myapp/
-│           └── config.lua     # 配置表单
-├── view/
-│   └── myapp/
-│       ├── status.htm         # 状态页面
-│       └── overview.htm       # 概览页面
-├── root/
-│   └── etc/
-│       ├── config/
-│       │   └── myapp          # UCI 默认配置
-│       └── init.d/
-│           └── myapp          # 启动脚本
-└── po/
-    ├── zh_CN/
-    │   └── myapp.po           # 中文翻译
-    └── templates/
-        └── myapp.pot          # 翻译模板
-```
+```bash
+# 在 SDK 或 OpenWrt 构建目录下
 
-### C.5 Makefile 模板
+# 1. 更新 feeds 索引
+./scripts/feeds update luci
+./scripts/feeds install luci-app-myapp
 
-```makefile
-include $(TOPDIR)/rules.mk
+# 2. 配置编译
+make menuconfig
+# → LuCI → Applications → luci-app-myapp
 
-LUCI_TITLE:=My Application
-LUCI_DESCRIPTION:=LuCI support for My Application
-LUCI_DEPENDS:=+luci-base
+# 3. 编译单个包
+make package/feeds/luci/luci-app-myapp/compile V=s
 
-PKG_LICENSE:=Apache-2.0
+# 4. 找到 ipk 文件
+find bin/ -name "luci-app-myapp*.ipk"
 
-include $(TOPDIR)/feeds/luci/luci.mk
-
-# call BuildPackage - OpenWrt buildance
+# 5. 上传到设备安装
+scp bin/packages/*/luci/luci-app-myapp*.ipk root@192.168.1.1:/tmp/
+ssh root@192.168.1.1 'opkg install /tmp/luci-app-myapp*.ipk'
 ```
 
 ---
@@ -2219,35 +2522,41 @@ curl -b "sysauth=xxx" http://192.168.1.1/cgi-bin/luci/admin/api/xxx
 
 ### CBI Option 类型速查
 
-| 类型 | 用途 | 示例 |
-|------|------|------|
-| Value | 文本输入 | IP地址、端口 |
-| Flag | 开关 | 启用/禁用 |
-| ListValue | 单选下拉 | 协议选择 |
-| MultiValue | 多选 | 功能选择 |
-| TextValue | 多行文本 | 脚本内容 |
+| 类型        | 用途     | 示例          |
+| ----------- | -------- | ------------- |
+| Value       | 文本输入 | IP地址、端口  |
+| Flag        | 开关     | 启用/禁用     |
+| ListValue   | 单选下拉 | 协议选择      |
+| MultiValue  | 多选     | 功能选择      |
+| TextValue   | 多行文本 | 脚本内容      |
 | DynamicList | 动态列表 | DNS服务器列表 |
-| Button | 按钮 | 执行操作 |
+| Button      | 按钮     | 执行操作      |
 
 ### datatype 验证速查
 
-| datatype | 验证内容 |
-|----------|---------|
-| string | 字符串 |
-| uinteger | 无符号整数 |
-| port | 端口 1-65535 |
-| ipaddr | IP 地址 |
-| ip4addr | IPv4 地址 |
-| macaddr | MAC 地址 |
-| hostname | 主机名 |
-| host | 主机名或IP |
-| network | 网络地址 CIDR |
+| datatype | 验证内容      |
+| -------- | ------------- |
+| string   | 字符串        |
+| uinteger | 无符号整数    |
+| port     | 端口 1-65535  |
+| ipaddr   | IP 地址       |
+| ip4addr  | IPv4 地址     |
+| macaddr  | MAC 地址      |
+| hostname | 主机名        |
+| host     | 主机名或IP    |
+| network  | 网络地址 CIDR |
 
 ---
 
-**文档版本**：v1.1  
+**文档版本**：v1.2  
 **适用于**：OpenWrt 24.10  
 **最后更新**：2025年1月
+
+**更新日志**：
+
+- v1.2: 新增 LuCI 源码结构说明、源码与编译后目录映射、SDK 开发环境搭建
+- v1.1: 新增快速入门、OpenWrt 24.10 新特性、FAQ、速查卡片
+- v1.0: 初始版本
 
 ---
 
